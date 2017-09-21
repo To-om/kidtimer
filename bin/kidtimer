@@ -538,6 +538,7 @@ install() {
 		wget -q -O ${INSTALL_PREFIX}/${FILE} ${REPOSITORY_URL}/${FILE}
 	done
 	ln -s ${INSTALL_PREFIX}/bin/kidtimer /usr/local/bin/kidtimer
+	chmod a+x ${INSTALL_PREFIX}/bin/kidtimer
 	echo '* * * * * root /usr/local/bin/kidtimer check' > /etc/cron.d/kidtimer
 }
 
