@@ -28,13 +28,14 @@ FILES=(
 	"locale/fr_FR.UTF-8"
 	"locale/it_IT.UTF-8"
 	"schedule/blank")
+mkdir -p ${CONFIG_DIR}
 touch ${CONFIG_DIR}/kid.list
 KIDS=($(cat "${CONFIG_DIR}/kid.list" | sort -u))
 [ ! -e ${LOCALE_DIR}/${LANG} ] && LANG="en_US.UTF-8"
 
 case $(date +%u) in
-	6|7)	is_weekend() { return 0 } ;;
-	*)		is_weekend() { return 1 } ;;
+	6|7)	is_weekend() { return 0; } ;;
+	*)		is_weekend() { return 1; } ;;
 esac
 
 ################# Subroutines ##################
@@ -275,7 +276,7 @@ go_send() {
 	MSG="${KID}: $(message_locale ${MESSAGE_ID})"
 	(for D in $(seq 0 10)
 	do
-		echo "su ${KID} -c 'DISPLAY=:$D notify-send -i /usr/local/kidtimer/icons/kidtimer-$TEXT.png ALERT \"$MSG\"'"
+		echo "su ${KID} -c 'DISPLAY=:$D notify-send -i ${ICONS_DIR}/kidtimer-$TEXT.png ALERT \"$MSG\"'"
 	done) | at now + ${T} minutes
 	# Note you need the file /var/spool/cron/atjobs/.SEQ owned by daemon:daemon for at to work properly!!!
 }
@@ -386,12 +387,12 @@ get_time() {
 locale_message() {
 	local MESSAGE_ID=$1
 
-	sed -ne "${MESSAGE_ID}p" /usr/local/kidtimer/locale/$LANG
+	sed -ne "${MESSAGE_ID}p" ${LOCALE_DIR}/${LANG}
 }
 
 go_tui() {
 	local CHOICE=""
-	while [ CHOICE -ne 5 ]
+	while [ "${CHOICE}" != 5 ]
 	do
 		cat <<- EOF
 			1) $(locale_message 7)
@@ -440,7 +441,7 @@ go_setup_user() {
 			go_echo_done
 			echo
 			#english: Modify limits now ?(y/n):
-			echo -n $(local_message 17)
+			echo -n $(locale_message 17)
 			read ANSWER
 			if [ "${ANSWER}" == "y" ]
 			then
@@ -515,7 +516,7 @@ check_dependencies() {
 	which at			&>/dev/null || MISSING_TOOLS="${MISSING_TOOLS} at"
 	which notify-send	&>/dev/null || MISSING_TOOLS="${MISSING_TOOLS} libnotify-bin"
 
-	if [ -n ${MISSING_TOOLS} ]
+	if [ -n "${MISSING_TOOLS}" ]
 	then
 		cat <<- EOF
 			$(locale_message 20)
@@ -535,10 +536,12 @@ get_update() {
 install() {
 	for FILE in ${FILES[@]}
 	do
-		wget -q -O ${INSTALL_PREFIX}/${FILE} ${REPOSITORY_URL}/${FILE}
+		mkdir -p $(dirname ${BASE_DIR}/${FILE})
+		wget -q -O ${BASE_DIR}/${FILE} ${REPOSITORY_URL}/${FILE}
 	done
-	ln -s ${INSTALL_PREFIX}/bin/kidtimer /usr/local/bin/kidtimer
-	chmod a+x ${INSTALL_PREFIX}/bin/kidtimer
+	mkdir -p /usr/local/bin
+	ln -sf ${BASE_DIR}/bin/kidtimer /usr/local/bin/kidtimer
+	chmod a+x ${BASE_DIR}/bin/kidtimer
 	echo '* * * * * root /usr/local/bin/kidtimer check' > /etc/cron.d/kidtimer
 }
 
@@ -549,8 +552,9 @@ uninstall() {
 	done
 	for FILE in ${FILES[@]}
 	do
-		rm -f ${INSTALL_PREFIX}/${FILE}
+		rm -f ${BASE_DIR}/${FILE}
 	done
+}
 
 
 ###################### Code ####################
@@ -565,6 +569,9 @@ case "$1" in
 	update)		get_update						;;
 	check)		go_check						;;
 	info)		get_info						;;
+	install)	install							;;
 	-h)			go_help							;;
 	help)		go_help							;;
 esac
+
+# vim: ts=4
