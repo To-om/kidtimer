@@ -29,8 +29,8 @@ FILES=(
 	"locale/it_IT.UTF-8"
 	"schedule/blank")
 mkdir -p ${CONFIG_DIR}
-touch ${CONFIG_DIR}/kid.list
-KIDS=($(cat "${CONFIG_DIR}/kid.list" | sort -u))
+touch ${CONFIG_DIR}/kid.list 2> /dev/null
+KIDS=($(cat "${CONFIG_DIR}/kid.list" 2> /dev/null | sort -u))
 [ ! -e ${LOCALE_DIR}/${LANG} ] && LANG="en_US.UTF-8"
 
 case $(date +%u) in
@@ -89,7 +89,7 @@ update_ttl() {
 	else
 		# Normal mode is to decrement a minute
 		local TTL=$(get_current_ttl ${KID})
-		echo $(${TTL} - 1) > ${TIME_DIR}/${KID}.ttl
+		echo $((${TTL} - 1)) > ${TIME_DIR}/${KID}.ttl
 		[ ${TTL} -gt 0 ]
 	fi
 }
@@ -145,10 +145,10 @@ go_check() {
 	local LOG=""
 	for KID in ${KIDS[@]}
 	do
-		local DAILY_RESET=$(stat -c %y "${TIME_DIR}/${KID}.ttl" | grep -q "^$(date +%Y-%m-%d)" && echo "Y" || echo "N")
+		local DAILY_RESET=$(stat -c %y "${TIME_DIR}/${KID}.ttl" | grep -q "^$(date +%Y-%m-%d)" && echo "N" || echo "Y")
 		local IS_LOGGED=$(is_logged ${KID} && echo "Y" || echo "N")
 		local CURRENT_TTL=$(get_current_ttl ${KID})
-		local IS_LOCKED=$(is_locked && echo "Y" || echo "N")
+		local IS_LOCKED=$(is_locked ${KID} && echo "Y" || echo "N")
 		local LOGOUT="N"
 		local HOURLY_ALLOWED=$(is_hourly_allowed ${KID} && echo "Y" || echo "N")
 
@@ -183,8 +183,8 @@ get_daily_ttl() {
 	local KID=$1
 
 	if is_weekend
-	then cat ${SCHEDULE_DIR}/${KID} | awk '/^MAX/{ print $2 }'
-	else cat ${SCHEDULE_DIR}/${KID} | awk '/^MAX/{ print $3 }'
+	then cat ${SCHEDULE_DIR}/${KID} | awk '/^MAX/{ print $3 }'
+	else cat ${SCHEDULE_DIR}/${KID} | awk '/^MAX/{ print $2 }'
 	fi
 }
 
@@ -214,7 +214,7 @@ get_current_ttl() {
 go_clean_jobs() {
 	local KID=$1
 
-	atq -q k | awk '{ print $1 }' | xargs atrm -q k
+	atq -q k | awk '{ print $1 }' | xargs -r atrm
 	rm -rf /tmp/kidtimer.shutdown.${KID} \
 		/tmp/kidtimer.send*.bash.${KID} \
 		/tmp/killall.bash.${KID}
@@ -233,8 +233,8 @@ is_hourly_allowed() {
 		# Disable/Enable depending on if allowed during time of day
 		local HOUR=`date +%H`
 		if is_weekend
-		then grep ^${HOUR} ${SCHEDULE_DIR}/${KID} | awk '{ print $2 }' | grep -qi y
-		else grep ^${HOUR} ${SCHEDULE_DIR}/${KID} | awk '{ print $3 }' | grep -qi y
+		then grep ^${HOUR} ${SCHEDULE_DIR}/${KID} | awk '{ print $3 }' | grep -qi y
+		else grep ^${HOUR} ${SCHEDULE_DIR}/${KID} | awk '{ print $2 }' | grep -qi y
 		fi
 		return $?
 	else
@@ -252,7 +252,7 @@ go_logout() {
 
 	# only start this if they are logged in
 	# schedule the shutdown if we haven't already
-	if [ is_logged ${KID} -a ! -e /tmp/kidtimer.shutdown.${KID} ]; then
+	if is_logged ${KID} && [ ! -e /tmp/kidtimer.shutdown.${KID} ]; then
 		go_send ${KID} 5
 		go_send ${KID} 4
 		go_send ${KID} 3
@@ -273,11 +273,11 @@ go_send() {
 	local MESSAGE_ID=$((7-$T))
 	local TEXT=$((6-$T))
 
-	MSG="${KID}: $(message_locale ${MESSAGE_ID})"
+	MSG="${KID}: $(locale_message ${MESSAGE_ID})"
 	(for D in $(seq 0 10)
 	do
 		echo "su ${KID} -c 'DISPLAY=:$D notify-send -i ${ICONS_DIR}/kidtimer-$TEXT.png ALERT \"$MSG\"'"
-	done) | at now + ${T} minutes
+	done) | at -q k now + ${T} minutes
 	# Note you need the file /var/spool/cron/atjobs/.SEQ owned by daemon:daemon for at to work properly!!!
 }
 
@@ -295,6 +295,7 @@ go_killall() {
 		rm -rf /tmp/kidtimer.shutdown.${KID}
 		rm -f /tmp/killall.bash.${KID}
 		pkill -KILL -u ${KID}
+		passwd ${KID} -l
 	EOF
 }
 
@@ -528,9 +529,8 @@ check_dependencies() {
 }
 
 get_update() {
-	wget -q -O ${INSTALL_PREFIX}/bin/kidtimer ${REPOSITORY_URL}/bin/kidtimer
-	chmod a+x /usr/local/bin/kidtimer
-	/usr/local/bin/kidtimer update
+	wget -q -O ${BASE_DIR}/bin/kidtimer ${REPOSITORY_URL}/bin/kidtimer
+	chmod a+x ${BASE_DIR}/bin/kidtimer
 }
 
 install() {
@@ -564,7 +564,7 @@ case "$1" in
 	"")			check_dependencies && go_tui	;;
 	addtime)	go_addtime $2 $3				;;
 	reset)		reset_time $2					;;
-	gettime)	get_time						;;
+	gettime)	get_time $2						;;
 	logout)		go_logout $2					;;
 	update)		get_update						;;
 	check)		go_check						;;
