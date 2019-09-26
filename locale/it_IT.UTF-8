@@ -19,4 +19,4 @@ L'utente non esiste. Si prega di creare utente utilizzando il comando useradd pr
 Utente non setup.
 Errore. Manca dipendenze dei pacchetti.
 Si prega di installare utilizzando la seguente riga;
-Sintassi: SommaTempi <utente> <minutes|reset>
+Sintassi: SommaTempi <utente> <day|week> <minutes|reset>

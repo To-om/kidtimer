@@ -19,4 +19,4 @@ User does not exist. Please create user using the useradd command first.
 User not setup.
 Error. Missing package dependencies.
 Please install using the following line;
-Syntax: addtime <user> <minutes|reset>
+Syntax: addtime <user> <day|week> <minutes|reset>

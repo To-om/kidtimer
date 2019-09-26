@@ -1,6 +1,7 @@
 #!/bin/bash
-# Restrict kids computer access to specific hours and total time.
+# Restrict kids computer access to specific hours and total time daily and weekly.
 # By: Michael Groves - grover66_at_gmail_dot_com
+# Updated by Toom
 
 INSTALL_PREFIX="/opt"
 BASE_DIR="${INSTALL_PREFIX}/kidtimer"
@@ -10,6 +11,7 @@ CONFIG_DIR="${BASE_DIR}/etc"
 LOG_FILE="${BASE_DIR}/log"
 LOCALE_DIR="${BASE_DIR}/locale"
 ICONS_DIR="${BASE_DIR}/icons"
+SOUND_FILE="${BASE_DIR}/sounds/bark.ogg"
 REPOSITORY_URL="https://raw.githubusercontent.com/To-om/kidtimer/master/"
 FILES=(
 	"bin/kidtimer"
@@ -31,12 +33,8 @@ FILES=(
 mkdir -p ${CONFIG_DIR}
 touch ${CONFIG_DIR}/kid.list 2> /dev/null
 KIDS=($(cat "${CONFIG_DIR}/kid.list" 2> /dev/null | sort -u))
-[ ! -e ${LOCALE_DIR}/${LANG} ] && LANG="en_US.UTF-8"
-
-case $(date +%u) in
-	6|7)	is_weekend() { return 0; } ;;
-	*)		is_weekend() { return 1; } ;;
-esac
+[[ ! -e ${LOCALE_DIR}/${LANG} ]] && LANG="en_US.UTF-8"
+WEEK_DAY=$(date +%u)
 
 ################# Subroutines ##################
 ################################################
@@ -67,7 +65,7 @@ is_configured() {
 
 	for	K in ${KIDS[@]}
 	do
-		[ ${K} = ${KID} ] && return 0
+		[[ ${K} = ${KID} ]] && return 0
 	done
 	return 1
 }
@@ -75,23 +73,20 @@ is_configured() {
 # Decrement TTL (time to live) in mins and return true if TTL > 0
 #
 # shows: nothing
-# returns:
-#   0 if TTL > 0
-#   1 if TTL <= 0
+# returns: remaining ttl
 update_ttl() {
 	local KID=$1
 
-	#more time
-	local mfile=$(($(date +%s) / 10000))
-	if [ -e /tmp/${mfile} ]; then
-		rm -f /tmp/${mfile}
-		reset_time ${KID}
-	else
-		# Normal mode is to decrement a minute
-		local TTL=$(get_current_ttl ${KID})
-		echo $((${TTL} - 1)) > ${TIME_DIR}/${KID}.ttl
-		[ ${TTL} -gt 0 ]
-	fi
+    # Normal mode is to decrement a minute
+    local DAY_TTL=$(get_current_ttl ${KID} day)
+    set_ttl ${KID} day $((${DAY_TTL} - 1))
+    local WEEK_TTL=$(get_current_ttl ${KID} week)
+    set_ttl ${KID} week $((${WEEK_TTL} - 1))
+
+    if [[ ${DAY_TTL} -gt ${WEEK_DAY} ]]
+    then echo ${WEEK_DAY}
+    else echo ${DAY_TTL}
+    fi
 }
 
 # Set TTL to the specified value
@@ -100,9 +95,10 @@ update_ttl() {
 # returns: nothing
 set_ttl() {
 	local KID=$1
-	local TTL=$2
+	local PERIOD=$2
+	local TTL=$3
 
-	echo ${TTL} > ${TIME_DIR}/${KID}.ttl
+	echo ${TTL} > ${TIME_DIR}/${KID}-${PERIOD}.ttl
 }
 
 # Show debug information
@@ -145,33 +141,34 @@ go_check() {
 	local LOG=""
 	for KID in ${KIDS[@]}
 	do
-		local DAILY_RESET=$(stat -c %y "${TIME_DIR}/${KID}.ttl" | grep -q "^$(date +%Y-%m-%d)" && echo "N" || echo "Y")
+		local DAILY_RESET=$(stat -c %y "${TIME_DIR}/${KID}-day.ttl" | grep -q "^$(date +%Y-%m-%d)" && echo "N" || echo "Y")
 		local IS_LOGGED=$(is_logged ${KID} && echo "Y" || echo "N")
-		local CURRENT_TTL=$(get_current_ttl ${KID})
 		local IS_LOCKED=$(is_locked ${KID} && echo "Y" || echo "N")
 		local LOGOUT="N"
 		local HOURLY_ALLOWED=$(is_hourly_allowed ${KID} && echo "Y" || echo "N")
+		local DAY_TTL=$(get_current_ttl ${KID} day)
+		local WEEK_TTL=$(get_current_ttl ${KID} week)
 
 		# New day means we reset the TTL
-		[ ${DAILY_RESET} = "Y" ] && reset_time ${KID}
+		[[ ${DAILY_RESET} = "Y" ]] && reset_time ${KID}
 
 		# change TTL for logged in user and return remaining time
-		if [ ${IS_LOGGED} = "Y" ]
+		if [[ ${IS_LOGGED} = "Y" ]]
 		then
-			update_ttl ${KID}
+			CURRENT_TTL=$(update_ttl ${KID})
 
-			if [ ${CURRENT_TTL} -le 5 -o ${HOURLY_ALLOWED} = "N" ]
+			if [[ ${CURRENT_TTL} -le 5 || ${HOURLY_ALLOWED} = "N" ]]
 			then
 				go_logout ${KID}
 				LOGOUT="Y"
 			fi
 		else
-			if [ ${CURRENT_TTL} -gt 0 -a ${HOURLY_ALLOWED} = "Y" ]
-			then [ ${IS_LOCKED} = "Y" ] && passwd ${KID} -u
-			else [ ${IS_LOCKED} = "N" ] && passwd ${KID} -l
+			if [[ ${DAY_TTL} -gt 0 && ${WEEK_TTL} -gt 0 && ${HOURLY_ALLOWED} = "Y" ]]
+			then [[ ${IS_LOCKED} = "Y" ]] && passwd ${KID} -u
+			else [[ ${IS_LOCKED} = "N" ]] && passwd ${KID} -l
 			fi
 		fi
-		echo $(date +"%F %T") KID=${KID} DAILY_RESET=${DAILY_RESET} IS_LOGGED=${IS_LOGGED} CURRENT_TTL=${CURRENT_TTL} IS_LOCKED=${IS_LOCKED} LOGOUT=${LOGOUT} HOURLY_ALLOWED=${HOURLY_ALLOWED} >> ${LOG_FILE}
+		echo $(date +"%F %T") KID=${KID} DAILY_RESET=${DAILY_RESET} IS_LOGGED=${IS_LOGGED} CURRENT_TTL=${DAY_TTL}/${WEEK_TTL} IS_LOCKED=${IS_LOCKED} LOGOUT=${LOGOUT} HOURLY_ALLOWED=${HOURLY_ALLOWED} >> ${LOG_FILE}
 	done
 }
 
@@ -179,12 +176,13 @@ go_check() {
 #
 # shows: user TTL
 # returns: nothing
-get_daily_ttl() {
+get_default_ttl() {
 	local KID=$1
+	local PERIOD=$2
 
-	if is_weekend
-	then cat ${SCHEDULE_DIR}/${KID} | awk '/^MAX/{ print $3 }'
-	else cat ${SCHEDULE_DIR}/${KID} | awk '/^MAX/{ print $2 }'
+    if [[ ${PERIOD} = "day" ]]
+    then cat ${SCHEDULE_DIR}/${KID} | awk "/^MAX/{ print \$${WEEK_DAY} }"
+    else cat ${SCHEDULE_DIR}/${KID} | awk "/^MAX/{ print \$8 }"
 	fi
 }
 
@@ -194,15 +192,16 @@ get_daily_ttl() {
 # returns: nothing
 get_current_ttl() {
 	local KID=$1
+	local PERIOD=$2
 
-	if [ -e ${TIME_DIR}/${KID}.ttl ]
+	if [[ -e ${TIME_DIR}/${KID}-${PERIOD}.ttl ]]
 	then
-		TTL=$(cat "${TIME_DIR}/${KID}.ttl")
-		[ ${TTL} -lt 0 ] && TTL=0
+		TTL=$(cat "${TIME_DIR}/${KID}-${PERIOD}.ttl")
+		[[ ${TTL} -lt 0 ]] && TTL=0
 	#first time for a user, create file, and set default TTL
 	else
-		TTL=$(get_daily_ttl ${KID})
-		echo ${TTL} > ${TIME_DIR}/${KID}.ttl
+		TTL=$(get_default_ttl ${KID} ${PERIOD})
+		set_ttl ${KID} ${PERIOD} ${TTL}
 	fi
 	echo ${TTL}
 }
@@ -229,7 +228,7 @@ go_clean_jobs() {
 is_hourly_allowed() {
 	local KID=$1
 
-	if [ -e ${SCHEDULE_DIR}/${KID} ]; then
+	if [[ -e ${SCHEDULE_DIR}/${KID} ]]; then
 		# Disable/Enable depending on if allowed during time of day
 		local HOUR=`date +%H`
 		if is_weekend
@@ -252,7 +251,7 @@ go_logout() {
 
 	# only start this if they are logged in
 	# schedule the shutdown if we haven't already
-	if is_logged ${KID} && [ ! -e /tmp/kidtimer.shutdown.${KID} ]; then
+	if is_logged ${KID} && [[ ! -e /tmp/kidtimer.shutdown.${KID} ]]; then
 		go_send ${KID} 5
 		go_send ${KID} 4
 		go_send ${KID} 3
@@ -273,6 +272,10 @@ go_send() {
 	local MESSAGE_ID=$((7-$T))
 	local TEXT=$((6-$T))
 
+    for I in $(seq ${T} 7)
+    do
+        play ${SOUND_FILE} &> /dev/null
+    done
 	MSG="${KID}: $(locale_message ${MESSAGE_ID})"
 	(for D in $(seq 0 10)
 	do
@@ -299,7 +302,7 @@ go_killall() {
 	EOF
 }
 
-# Show localized "Done" message
+# Show localized "Error" message
 #
 # shows: Done message
 # returns: nothing
@@ -307,7 +310,7 @@ go_echo_error() {
 	locale_message 12
 }
 
-# Show localized "Error" message
+# Show localized "Done" message
 #
 # shows: Error message
 # returns: nothing
@@ -339,7 +342,8 @@ reset_time() {
 # returns: nothing
 go_addtime() {
 	local KID=$1
-	local TIME=$2
+	local PERIOD=$2
+	local TIME=$3
 
 	if is_configured ${KID}
 	then
@@ -352,7 +356,7 @@ go_addtime() {
 				locale_message 22
 				;;
 			*)
-				set_ttl $(($(get_current_ttl) + ${TIME}))
+				set_ttl ${KID} ${PERIOD} $(($(get_current_ttl ${KID} ${PERIOD}) + ${TIME}))
 				is_locked ${KID} && passwd ${KID} -u
 				go_clean_jobs ${KID}
 		esac
@@ -372,7 +376,9 @@ get_time() {
 
 	if is_configured ${KID}
 	then
-		get_current_ttl ${KID}
+		DAY_TTL=$(get_current_ttl ${KID} day)
+		WEEK_TTL=$(get_current_ttl ${KID} week)
+		echo ${DAY_TTL} / ${WEEK_TTL}
 	else
 		echo
 		#english: User not setup.
@@ -393,7 +399,7 @@ locale_message() {
 
 go_tui() {
 	local CHOICE=""
-	while [ "${CHOICE}" != 5 ]
+	while [[ "${CHOICE}" != 5 ]]
 	do
 		cat <<- EOF
 			1) $(locale_message 7)
@@ -418,7 +424,7 @@ go_tui() {
 
 go_list_users() {
 	locale_message 14
-	if [ ${#KIDS} -gt 0 ]
+	if [[ ${#KIDS} -gt 0 ]]
 	then
 		echo ${KIDS}
 	else
@@ -437,14 +443,15 @@ go_setup_user() {
 		if ! is_configured ${KID}
 		then
 			cp ${SCHEDULE_DIR}/blank ${SCHEDULE_DIR}/${KID}
-			get_daily_ttl ${KID} > ${TIME_DIR}/${KID}.ttl
+			set_ttl ${KID} day $(get_default_ttl ${KID} day})
+			set_ttl ${KID} week $(get_default_ttl ${KID} week})
 			echo ${KID} >> ${CONFIG_DIR}/kid.list
 			go_echo_done
 			echo
 			#english: Modify limits now ?(y/n):
 			echo -n $(locale_message 17)
 			read ANSWER
-			if [ "${ANSWER}" == "y" ]
+			if [[ "${ANSWER}" == "y" ]]
 			then
 				editor ${SCHEDULE_DIR}/${KID}
 				reset_time ${KID}
@@ -517,7 +524,7 @@ check_dependencies() {
 	which at			&>/dev/null || MISSING_TOOLS="${MISSING_TOOLS} at"
 	which notify-send	&>/dev/null || MISSING_TOOLS="${MISSING_TOOLS} libnotify-bin"
 
-	if [ -n "${MISSING_TOOLS}" ]
+	if [[ -n "${MISSING_TOOLS}" ]]
 	then
 		cat <<- EOF
 			$(locale_message 20)
@@ -562,7 +569,7 @@ uninstall() {
 
 case "$1" in
 	"")			check_dependencies && go_tui	;;
-	addtime)	go_addtime $2 $3				;;
+	addtime)	go_addtime $2 $3 $4				;;
 	reset)		reset_time $2					;;
 	gettime)	get_time $2						;;
 	logout)		go_logout $2					;;

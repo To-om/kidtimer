@@ -19,4 +19,4 @@ Utilisateur n'existe pas. S'il vous plaît créer l'utilisateur en utilisant d'a
 Utilisateur non configuration.
 Erreur. Manquant dépendances des paquets.
 S'il vous plaît installer en utilisant la ligne suivante;
-Syntaxe: AddTime <utilisateur> <minutes|reset>
+Syntaxe: AddTime <utilisateur> <day|week> <minutes|reset>

@@ -4,10 +4,10 @@ Attention: La session se termine automatiquement dans 2 minutes.
 Attention: La session se termine automatiquement dans 3 minutes.
 Attention: La session se termine automatiquement dans 4 minutes.
 Attention: La session se termine automatiquement dans 5 minutes.
-Limites d'utilisation de l'installation.
+Configurer les limites d'utilisation.
 Modifier les limites d'utilisation.
 Supprimer les limites d'utilisation.
-Liste des utilisateurs configurés.
+Lister les utilisateurs configurés.
 Quitter.
 Erreur.
 Terminé.
@@ -15,8 +15,8 @@ Les utilisateurs configurés pour KidTimer.
 Pas d'utilisateurs configurés.
 Nom d'utilisateur:
 Modifier les limites maintenant ?(y/n):
-Utilisateur n'existe pas. S'il vous plaît créer l'utilisateur en utilisant d'abord la commande useradd.
-Utilisateur non configuration.
-Erreur. Manquant dépendances des paquets.
+L'utilisateur n'existe pas. S'il vous plaît, créez l'utilisateur avec la commande useradd.
+L'utilisateur n'est pas configuré.
+Erreur. Des dépendances sont manquantes, veuillez installer les paquets avec la commande suivate
 S'il vous plaît installer en utilisant la ligne suivante;
-Syntaxe: AddTime <utilisateur> <minutes|reset>
+Syntaxe: AddTime <utilisateur> <day|week> <minutes|reset>

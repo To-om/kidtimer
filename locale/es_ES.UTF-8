@@ -19,4 +19,4 @@ El usuario no existe. Por favor, cree el usuario con el comando useradd primero.
 El usuario no instalación.
 Error. Missing dependencias de paquetes.
 Por favor, instale mediante la siguiente línea;
-Sintaxis: tiempoSuma <usuario> <minutes|reset>
+Sintaxis: tiempoSuma <usuario> <day|week> <minutes|reset>
