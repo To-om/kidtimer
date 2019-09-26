@@ -14,27 +14,31 @@ ICONS_DIR="${BASE_DIR}/icons"
 SOUND_FILE="${BASE_DIR}/sounds/bark.ogg"
 REPOSITORY_URL="https://raw.githubusercontent.com/To-om/kidtimer/master/"
 FILES=(
-	"bin/kidtimer"
-	"icons/kidtimer-1.png"
-	"icons/kidtimer-2.png"
-	"icons/kidtimer-3.png"
-	"icons/kidtimer-4.png"
-	"icons/kidtimer-5.png"
-	"locale/de_CH.UTF-8"
-	"locale/de_DE.UTF-8"
-	"locale/en_US.UTF-8"
-	"locale/es_ES.UTF-8"
-	"locale/fr_BE.UTF-8"
-	"locale/fr_CA.UTF-8"
-	"locale/fr_CH.UTF-8"
-	"locale/fr_FR.UTF-8"
-	"locale/it_IT.UTF-8"
-	"schedule/blank")
+    "bin/kidtimer"
+    "icons/kidtimer-1.png"
+    "icons/kidtimer-2.png"
+    "icons/kidtimer-3.png"
+    "icons/kidtimer-4.png"
+    "icons/kidtimer-5.png"
+    "locale/de_CH.UTF-8"
+    "locale/de_DE.UTF-8"
+    "locale/en_US.UTF-8"
+    "locale/es_ES.UTF-8"
+    "locale/fr_BE.UTF-8"
+    "locale/fr_CA.UTF-8"
+    "locale/fr_CH.UTF-8"
+    "locale/fr_FR.UTF-8"
+    "locale/it_IT.UTF-8"
+    "schedule/blank")
 mkdir -p ${CONFIG_DIR}
 touch ${CONFIG_DIR}/kid.list 2> /dev/null
 KIDS=($(cat "${CONFIG_DIR}/kid.list" 2> /dev/null | sort -u))
 [[ ! -e ${LOCALE_DIR}/${LANG} ]] && LANG="en_US.UTF-8"
 WEEK_DAY=$(date +%u)
+case $(date +%u) in
+    6|7)    is_weekend() { return 0; } ;;
+    *)      is_weekend() { return 1; } ;;
+esac
 
 ################# Subroutines ##################
 ################################################
@@ -49,9 +53,9 @@ WEEK_DAY=$(date +%u)
 #   0 if user is logged
 #   1 if user is not logged
 is_logged() {
-	local KID=$1
+    local KID=$1
 
-	users | grep -q ${KID}
+    users | grep -q ${KID}
 }
 
 # Check if user is configured for kidtimer
@@ -61,13 +65,13 @@ is_logged() {
 #   0 if user is configured
 #   1 if user is not configured
 is_configured() {
-	local KID=$1
+    local KID=$1
 
-	for	K in ${KIDS[@]}
-	do
-		[[ ${K} = ${KID} ]] && return 0
-	done
-	return 1
+    for    K in ${KIDS[@]}
+    do
+        [[ ${K} == ${KID} ]] && return 0
+    done
+    return 1
 }
 
 # Decrement TTL (time to live) in mins and return true if TTL > 0
@@ -75,7 +79,7 @@ is_configured() {
 # shows: nothing
 # returns: remaining ttl
 update_ttl() {
-	local KID=$1
+    local KID=$1
 
     # Normal mode is to decrement a minute
     local DAY_TTL=$(get_current_ttl ${KID} day)
@@ -94,11 +98,11 @@ update_ttl() {
 # shows: nothing
 # returns: nothing
 set_ttl() {
-	local KID=$1
-	local PERIOD=$2
-	local TTL=$3
+    local KID=$1
+    local PERIOD=$2
+    local TTL=$3
 
-	echo ${TTL} > ${TIME_DIR}/${KID}-${PERIOD}.ttl
+    echo ${TTL} > ${TIME_DIR}/${KID}-${PERIOD}.ttl
 }
 
 # Show debug information
@@ -106,70 +110,84 @@ set_ttl() {
 # shows: information on system
 # returns: nothing
 get_info() {
-	COMMANDS=(
-		"date"
-		"find ${BASE_DIR} -print | sort"
-		"cat ${CONFIG_DIR}/kid.list"
-		"passwd -S -a"
-		"grep '' ${SCHEDULE_DIR}/*"
-		"grep '' ${TIME_DIR}/*"
-		"cat /etc/cron.d/kidtimer"
-		"cat /etc/lsb-release"
-		"uname -a"
-		"env")
-	echo "kidtimer info"
-	echo "---------------------------------------------"
-	for CMD in ${COMMANDS[@]}
-	do
-		echo ${CMD}
-		$(${CMD})
-		echo "----"
-	done
+    COMMANDS=(
+        "date"
+        "find ${BASE_DIR} -print | sort"
+        "cat ${CONFIG_DIR}/kid.list"
+        "passwd -S -a"
+        "grep '' ${SCHEDULE_DIR}/*"
+        "grep '' ${TIME_DIR}/*"
+        "cat /etc/cron.d/kidtimer"
+        "cat /etc/lsb-release"
+        "uname -a"
+        "env")
+    echo "kidtimer info"
+    echo "---------------------------------------------"
+    for CMD in ${COMMANDS[@]}
+    do
+        echo ${CMD}
+        $(${CMD})
+        echo "----"
+    done
 }
 
 is_locked() {
-	local KID=$1
+    local KID=$1
 
-	passwd ${KID} -S | grep -q '^[^ ]* L'
+    passwd ${KID} -S | grep -q '^[^ ]* L'
 }
 
+
+is_daily_reset() {
+    local KID=$1
+    stat -c %y "${TIME_DIR}/${KID}-day.ttl" | grep -q "^$(date +%Y-%m-%d)"
+}
+
+is_weekly_reset() {
+    local KID=$1
+    local LAST_MODIFICATION_DATE=$(stat -c %Y "${TIME_DIR}/${KID}-day.ttl")
+    local LAST_MODIFICATION_WEEK=$(date +%V -d @${LAST_MODIFICATION_DATE})
+    local CURRENT_WEEK=$(date +%V)
+    [[ ${LAST_MODIFICATION_WEEK} != ${CURRENT_WEEK} ]]
+}
 # Check user TTL and if access is allowed at this hour
 #
 # shows: nothing
 # returns: nothing 
 go_check() {
-	local LOG=""
-	for KID in ${KIDS[@]}
-	do
-		local DAILY_RESET=$(stat -c %y "${TIME_DIR}/${KID}-day.ttl" | grep -q "^$(date +%Y-%m-%d)" && echo "N" || echo "Y")
-		local IS_LOGGED=$(is_logged ${KID} && echo "Y" || echo "N")
-		local IS_LOCKED=$(is_locked ${KID} && echo "Y" || echo "N")
-		local LOGOUT="N"
-		local HOURLY_ALLOWED=$(is_hourly_allowed ${KID} && echo "Y" || echo "N")
-		local DAY_TTL=$(get_current_ttl ${KID} day)
-		local WEEK_TTL=$(get_current_ttl ${KID} week)
+    for KID in ${KIDS[@]}
+    do
+        local DAILY_RESET=$(is_daily_reset ${KID} && echo "N" || echo "Y")
+        local WEEKLY_RESET=$(is_weekly_reset ${KID} && echo "N" || echo "Y")
+        local IS_LOGGED=$(is_logged ${KID} && echo "Y" || echo "N")
+        local IS_LOCKED=$(is_locked ${KID} && echo "Y" || echo "N")
+        local LOGOUT="N"
+        local HOURLY_ALLOWED=$(is_hourly_allowed ${KID} && echo "Y" || echo "N")
+        local DAY_TTL=$(get_current_ttl ${KID} day)
+        local WEEK_TTL=$(get_current_ttl ${KID} week)
 
-		# New day means we reset the TTL
-		[[ ${DAILY_RESET} = "Y" ]] && reset_time ${KID}
+        # New day means we reset the TTL
+        [[ ${DAILY_RESET} == "Y" ]] && reset_time ${KID} day
+        [[ ${WEEKLY_RESET} == "Y" ]] && reset_time ${KID} week
 
-		# change TTL for logged in user and return remaining time
-		if [[ ${IS_LOGGED} = "Y" ]]
-		then
-			CURRENT_TTL=$(update_ttl ${KID})
+        # change TTL for logged in user and return remaining time
+        if [[ ${IS_LOGGED} == "Y" ]]
+        then
+            CURRENT_TTL=$(update_ttl ${KID})
 
-			if [[ ${CURRENT_TTL} -le 5 || ${HOURLY_ALLOWED} = "N" ]]
-			then
-				go_logout ${KID}
-				LOGOUT="Y"
-			fi
-		else
-			if [[ ${DAY_TTL} -gt 0 && ${WEEK_TTL} -gt 0 && ${HOURLY_ALLOWED} = "Y" ]]
-			then [[ ${IS_LOCKED} = "Y" ]] && passwd ${KID} -u
-			else [[ ${IS_LOCKED} = "N" ]] && passwd ${KID} -l
-			fi
-		fi
-		echo $(date +"%F %T") KID=${KID} DAILY_RESET=${DAILY_RESET} IS_LOGGED=${IS_LOGGED} CURRENT_TTL=${DAY_TTL}/${WEEK_TTL} IS_LOCKED=${IS_LOCKED} LOGOUT=${LOGOUT} HOURLY_ALLOWED=${HOURLY_ALLOWED} >> ${LOG_FILE}
-	done
+            if [[ ${CURRENT_TTL} -le 5 || ${HOURLY_ALLOWED} == "N" ]]
+            then
+                go_logout ${KID}
+                LOGOUT="Y"
+            fi
+        else
+            if [[ ${DAY_TTL} -gt 0 && ${WEEK_TTL} -gt 0 && ${HOURLY_ALLOWED} = "Y" ]]
+            then [[ ${IS_LOCKED} == "Y" ]] && passwd ${KID} -u
+            else [[ ${IS_LOCKED} == "N" ]] && passwd ${KID} -l
+            fi
+        fi
+        echo $(date +"%F %T") KID=${KID} DAILY_RESET=${DAILY_RESET} IS_LOGGED=${IS_LOGGED} CURRENT_TTL=${DAY_TTL}/${WEEK_TTL} IS_LOCKED=${IS_LOCKED} LOGOUT=${LOGOUT} HOURLY_ALLOWED=${HOURLY_ALLOWED} >> ${LOG_FILE}
+    done
 }
 
 # Get the daily TTL for an user
@@ -177,13 +195,13 @@ go_check() {
 # shows: user TTL
 # returns: nothing
 get_default_ttl() {
-	local KID=$1
-	local PERIOD=$2
+    local KID=$1
+    local PERIOD=$2
 
-    if [[ ${PERIOD} = "day" ]]
-    then cat ${SCHEDULE_DIR}/${KID} | awk "/^MAX/{ print \$${WEEK_DAY} }"
-    else cat ${SCHEDULE_DIR}/${KID} | awk "/^MAX/{ print \$8 }"
-	fi
+    if [[ ${PERIOD} == "day" ]]
+    then cat ${SCHEDULE_DIR}/${KID} | awk "/^MAX/{ print \$$((${WEEK_DAY}+1)) }"
+    else cat ${SCHEDULE_DIR}/${KID} | awk "/^MAX/{ print \$9 }"
+    fi
 }
 
 # Get the remaining TTL for an user
@@ -191,19 +209,19 @@ get_default_ttl() {
 # shows: user TTL
 # returns: nothing
 get_current_ttl() {
-	local KID=$1
-	local PERIOD=$2
+    local KID=$1
+    local PERIOD=$2
 
-	if [[ -e ${TIME_DIR}/${KID}-${PERIOD}.ttl ]]
-	then
-		TTL=$(cat "${TIME_DIR}/${KID}-${PERIOD}.ttl")
-		[[ ${TTL} -lt 0 ]] && TTL=0
-	#first time for a user, create file, and set default TTL
-	else
-		TTL=$(get_default_ttl ${KID} ${PERIOD})
-		set_ttl ${KID} ${PERIOD} ${TTL}
-	fi
-	echo ${TTL}
+    if [[ -e ${TIME_DIR}/${KID}-${PERIOD}.ttl ]]
+    then
+        TTL=$(cat "${TIME_DIR}/${KID}-${PERIOD}.ttl")
+        [[ ${TTL} -lt 0 ]] && TTL=0
+    #first time for a user, create file, and set default TTL
+    else
+        TTL=$(get_default_ttl ${KID} ${PERIOD})
+        set_ttl ${KID} ${PERIOD} ${TTL}
+    fi
+    echo ${TTL}
 }
 
 # Cleanup user jobs
@@ -211,12 +229,12 @@ get_current_ttl() {
 # shows: nothing
 # returns: nothing
 go_clean_jobs() {
-	local KID=$1
+    local KID=$1
 
-	atq -q k | awk '{ print $1 }' | xargs -r atrm
-	rm -rf /tmp/kidtimer.shutdown.${KID} \
-		/tmp/kidtimer.send*.bash.${KID} \
-		/tmp/killall.bash.${KID}
+    atq -q k | awk '{ print $1 }' | xargs -r atrm
+    rm -rf /tmp/kidtimer.shutdown.${KID} \
+        /tmp/kidtimer.send*.bash.${KID} \
+        /tmp/killall.bash.${KID}
 }
 
 # Determine if allowed to use computer during this schedule
@@ -226,19 +244,19 @@ go_clean_jobs() {
 #   0 if user is allowed
 #   1 if user is not allowed
 is_hourly_allowed() {
-	local KID=$1
+    local KID=$1
 
-	if [[ -e ${SCHEDULE_DIR}/${KID} ]]; then
-		# Disable/Enable depending on if allowed during time of day
-		local HOUR=`date +%H`
-		if is_weekend
-		then grep ^${HOUR} ${SCHEDULE_DIR}/${KID} | awk '{ print $3 }' | grep -qi y
-		else grep ^${HOUR} ${SCHEDULE_DIR}/${KID} | awk '{ print $2 }' | grep -qi y
-		fi
-		return $?
-	else
-		return 0
-	fi
+    if [[ -e ${SCHEDULE_DIR}/${KID} ]]; then
+        # Disable/Enable depending on if allowed during time of day
+        local HOUR=`date +%H`
+        if is_weekend
+        then grep ^${HOUR} ${SCHEDULE_DIR}/${KID} | awk '{ print $3 }' | grep -qi y
+        else grep ^${HOUR} ${SCHEDULE_DIR}/${KID} | awk '{ print $2 }' | grep -qi y
+        fi
+        return $?
+    else
+        return 0
+    fi
 }
 
 # Logout an user
@@ -247,19 +265,19 @@ is_hourly_allowed() {
 # shows: nothing
 # returns: nothing
 go_logout() {
-	local KID=$1
+    local KID=$1
 
-	# only start this if they are logged in
-	# schedule the shutdown if we haven't already
-	if is_logged ${KID} && [[ ! -e /tmp/kidtimer.shutdown.${KID} ]]; then
-		go_send ${KID} 5
-		go_send ${KID} 4
-		go_send ${KID} 3
-		go_send ${KID} 2
-		go_send ${KID} 1
-		go_killall ${KID}
-		touch /tmp/kidtimer.shutdown.${KID}
-	fi
+    # only start this if they are logged in
+    # schedule the shutdown if we haven't already
+    if is_logged ${KID} && [[ ! -e /tmp/kidtimer.shutdown.${KID} ]]; then
+        go_send ${KID} 5
+        go_send ${KID} 4
+        go_send ${KID} 3
+        go_send ${KID} 2
+        go_send ${KID} 1
+        go_killall ${KID}
+        touch /tmp/kidtimer.shutdown.${KID}
+    fi
 }
 
 # send notification to the user
@@ -267,21 +285,21 @@ go_logout() {
 # shows: nothing
 # returns: nothing
 go_send() {
-	local KID=$1
-	local T=$2
-	local MESSAGE_ID=$((7-$T))
-	local TEXT=$((6-$T))
+    local KID=$1
+    local T=$2
+    local MESSAGE_ID=$((7-$T))
+    local TEXT=$((6-$T))
 
     for I in $(seq ${T} 7)
     do
         play ${SOUND_FILE} &> /dev/null
     done
-	MSG="${KID}: $(locale_message ${MESSAGE_ID})"
-	(for D in $(seq 0 10)
-	do
-		echo "su ${KID} -c 'DISPLAY=:$D notify-send -i ${ICONS_DIR}/kidtimer-$TEXT.png ALERT \"$MSG\"'"
-	done) | at -q k now + ${T} minutes
-	# Note you need the file /var/spool/cron/atjobs/.SEQ owned by daemon:daemon for at to work properly!!!
+    MSG="${KID}: $(locale_message ${MESSAGE_ID})"
+    (for D in $(seq 0 10)
+    do
+        echo "su ${KID} -c 'DISPLAY=:$D notify-send -i ${ICONS_DIR}/kidtimer-$TEXT.png ALERT \"$MSG\"'"
+    done) | at -q k now + ${T} minutes
+    # Note you need the file /var/spool/cron/atjobs/.SEQ owned by daemon:daemon for at to work properly!!!
 }
 
 
@@ -290,16 +308,16 @@ go_send() {
 # shows: nothing
 # returns: nothing
 go_killall() {
-	local KID=$1
+    local KID=$1
 
-	at now + 6 minutes <<- EOF
-		pkill -TERM -u ${KID}
-		sleep 5
-		rm -rf /tmp/kidtimer.shutdown.${KID}
-		rm -f /tmp/killall.bash.${KID}
-		pkill -KILL -u ${KID}
-		passwd ${KID} -l
-	EOF
+    at now + 6 minutes <<- EOF
+        pkill -TERM -u ${KID}
+        sleep 5
+        rm -rf /tmp/kidtimer.shutdown.${KID}
+        rm -f /tmp/killall.bash.${KID}
+        pkill -KILL -u ${KID}
+        passwd ${KID} -l
+EOF
 }
 
 # Show localized "Error" message
@@ -307,7 +325,7 @@ go_killall() {
 # shows: Done message
 # returns: nothing
 go_echo_error() {
-	locale_message 12
+    locale_message 12
 }
 
 # Show localized "Done" message
@@ -315,7 +333,7 @@ go_echo_error() {
 # shows: Error message
 # returns: nothing
 go_echo_done() {
-	locale_message 13
+    locale_message 13
 }
 
 
@@ -324,16 +342,18 @@ go_echo_done() {
 # shows: nothing
 # returns: nothing
 reset_time() {
-	local KID=$1
+    local KID=$1
+    local PERIOD=$2
 
-	# make sure this kid is in the list to begin with
-	if is_configured ${KID}
-	then
-		get_daily_ttl ${KID} > ${TIME_DIR}/${KID}.ttl
-		is_locked ${KID} && passwd ${KID} -u
-		go_clean_jobs ${KID}
-		go_echo_done
-	fi
+    # make sure this kid is in the list to begin with
+    if is_configured ${KID}
+    then
+        local TTL=$(get_default_ttl ${KID} ${PERIOD})
+        set_ttl ${KID} ${PERIOD} ${TTL}
+        is_locked ${KID} && passwd ${KID} -u
+        go_clean_jobs ${KID}
+        go_echo_done
+    fi
 }
 
 # Add time to an user
@@ -341,30 +361,30 @@ reset_time() {
 # shows: nothing
 # returns: nothing
 go_addtime() {
-	local KID=$1
-	local PERIOD=$2
-	local TIME=$3
+    local KID=$1
+    local PERIOD=$2
+    local TIME=$3
 
-	if is_configured ${KID}
-	then
-		case ${TIME} in
-			reset)
-				reset_time ${KID}
-				go_echo_done
-				;;
-			''|*[!0-9]*)
-				locale_message 22
-				;;
-			*)
-				set_ttl ${KID} ${PERIOD} $(($(get_current_ttl ${KID} ${PERIOD}) + ${TIME}))
-				is_locked ${KID} && passwd ${KID} -u
-				go_clean_jobs ${KID}
-		esac
-	else
-		go_echo_error
-		#english: User not setup.
-		locale_message 19
-	fi
+    if is_configured ${KID}
+    then
+        case ${TIME} in
+            reset)
+                reset_time ${KID} ${PERIOD}
+                go_echo_done
+                ;;
+            ''|*[!0-9]*)
+                locale_message 22
+                ;;
+            *)
+                set_ttl ${KID} ${PERIOD} $(($(get_current_ttl ${KID} ${PERIOD}) + ${TIME}))
+                is_locked ${KID} && passwd ${KID} -u
+                go_clean_jobs ${KID}
+        esac
+    else
+        go_echo_error
+        #english: User not setup.
+        locale_message 19
+    fi
 }
 
 # show the TTL of an user
@@ -372,19 +392,19 @@ go_addtime() {
 # shows: number of remaining minutes
 # returns: nothing
 get_time() {
-	local KID=$1
+    local KID=$1
 
-	if is_configured ${KID}
-	then
-		DAY_TTL=$(get_current_ttl ${KID} day)
-		WEEK_TTL=$(get_current_ttl ${KID} week)
-		echo ${DAY_TTL} / ${WEEK_TTL}
-	else
-		echo
-		#english: User not setup.
-		locale_message 19
-		echo
-	fi
+    if is_configured ${KID}
+    then
+        DAY_TTL=$(get_current_ttl ${KID} day)
+        WEEK_TTL=$(get_current_ttl ${KID} week)
+        echo ${DAY_TTL} / ${WEEK_TTL}
+    else
+        echo
+        #english: User not setup.
+        locale_message 19
+        echo
+    fi
 }
 
 # Show the localized message
@@ -392,175 +412,176 @@ get_time() {
 # shows: message
 # returns: nothing
 locale_message() {
-	local MESSAGE_ID=$1
+    local MESSAGE_ID=$1
 
-	sed -ne "${MESSAGE_ID}p" ${LOCALE_DIR}/${LANG}
+    sed -ne "${MESSAGE_ID}p" ${LOCALE_DIR}/${LANG}
 }
 
 go_tui() {
-	local CHOICE=""
-	while [[ "${CHOICE}" != 5 ]]
-	do
-		cat <<- EOF
-			1) $(locale_message 7)
-			2) $(locale_message 8)
-			3) $(locale_message 9)
-			4) $(locale_message 10)
-			5) $(locale_message 11)
+    local CHOICE=""
+    while [[ "${CHOICE}" != 5 ]]
+    do
+        cat <<- EOF
+            1) $(locale_message 7)
+            2) $(locale_message 8)
+            3) $(locale_message 9)
+            4) $(locale_message 10)
+            5) $(locale_message 11)
 
-			"Choose: "
-		EOF
+            "Choose: "
+EOF
 
-		read CHOICE
-		case "${CHOICE}" in
-			1) go_setup_user	;;
-			2) go_modify_user	;;
-			3) go_remove_user	;;
-			4) go_list_users	;;
-		esac
-	done
+        read CHOICE
+        case "${CHOICE}" in
+            1) go_setup_user    ;;
+            2) go_modify_user    ;;
+            3) go_remove_user    ;;
+            4) go_list_users    ;;
+        esac
+    done
 }
 
 
 go_list_users() {
-	locale_message 14
-	if [[ ${#KIDS} -gt 0 ]]
-	then
-		echo ${KIDS}
-	else
-		locale_message 15
-	fi
+    locale_message 14
+    if [[ ${#KIDS} -gt 0 ]]
+    then
+        echo ${KIDS[*]}
+    else
+        locale_message 15
+    fi
 }
 
 go_setup_user() {
-	echo
-	#english: Username:
-	echo -n $(locale_message 16)
-	read KID
+    echo
+    #english: Username:
+    echo -n $(locale_message 16)
+    read KID
 
-	if id ${KID} &> /dev/null
-	then
-		if ! is_configured ${KID}
-		then
-			cp ${SCHEDULE_DIR}/blank ${SCHEDULE_DIR}/${KID}
-			set_ttl ${KID} day $(get_default_ttl ${KID} day})
-			set_ttl ${KID} week $(get_default_ttl ${KID} week})
-			echo ${KID} >> ${CONFIG_DIR}/kid.list
-			go_echo_done
-			echo
-			#english: Modify limits now ?(y/n):
-			echo -n $(locale_message 17)
-			read ANSWER
-			if [[ "${ANSWER}" == "y" ]]
-			then
-				editor ${SCHEDULE_DIR}/${KID}
-				reset_time ${KID}
-				go_echo_done
-			fi
-		fi
-	else
-		go_echo_error
-		#english: User does not exist. Please create user using the useradd command first.
-		locale_message 18
-	fi
+    if id ${KID} &> /dev/null
+    then
+        if ! is_configured ${KID}
+        then
+            cp ${SCHEDULE_DIR}/blank ${SCHEDULE_DIR}/${KID}
+            set_ttl ${KID} day $(get_default_ttl ${KID} day})
+            set_ttl ${KID} week $(get_default_ttl ${KID} week})
+            echo ${KID} >> ${CONFIG_DIR}/kid.list
+            go_echo_done
+            echo
+            #english: Modify limits now ?(y/n):
+            echo -n $(locale_message 17)
+            read ANSWER
+            if [[ "${ANSWER}" == "y" ]]
+            then
+                editor ${SCHEDULE_DIR}/${KID}
+                reset_time ${KID} day
+                reset_time ${KID} week
+                go_echo_done
+            fi
+        fi
+    else
+        go_echo_error
+        #english: User does not exist. Please create user using the useradd command first.
+        locale_message 18
+    fi
 }
 
 
 go_modify_user() {
-	echo
-	#english: Username:
-	echo -n $(locale_message 16)
-	read KID
-	if is_configured ${KID}
-	then
-	 	editor ${SCHEDULE_DIR}/${KID}
-	else
-		go_echo_error
-		#english: User not setup.
-		locale_message 19
-		echo
-	fi
+    echo
+    #english: Username:
+    echo -n $(locale_message 16)
+    read KID
+    if is_configured ${KID}
+    then
+         editor ${SCHEDULE_DIR}/${KID}
+    else
+        go_echo_error
+        #english: User not setup.
+        locale_message 19
+        echo
+    fi
 }
 
 
 go_remove_user() {
-	echo
-	#english: Username:
-	echo -n $(locale_message 16)
-	read KID
-	if is_configured ${KID}
-	then
-		sed -i "/^${KID}$/d" ${CONFIG_DIR}/kid.list
-		go_echo_done
-	else
-		go_echo_error
-		#english: User not setup.
-		locale_message 19
-		echo
-	fi
+    echo
+    #english: Username:
+    echo -n $(locale_message 16)
+    read KID
+    if is_configured ${KID}
+    then
+        sed -i "/^${KID}$/d" ${CONFIG_DIR}/kid.list
+        go_echo_done
+    else
+        go_echo_error
+        #english: User not setup.
+        locale_message 19
+        echo
+    fi
 }
 
 
 go_help() {
-	cat <<-EOF
+    cat <<-EOF
 
-		Commands:
-		--------------------------------------------------------------------------------
-		addtime <user> <minutes> ... Increases allowed time for the day.
-		gettime <user> ... Prints remaining time for the day.
-		reset <user> ... Reset time for the day.
-		logout <user> ... Starts logout sequence for user.
-		hourly ... Enables/disables user access based on the schedule.
-		daily ... Resets time for the new day.
-		update ... Updates kidtimer to the latest version.
-		info ... Gather local configurations to troubleshoot issues.
-		help ... This list.
-		--------------------------------------------------------------------------------
-	EOF
+        Commands:
+        --------------------------------------------------------------------------------
+        addtime <user> <minutes> ... Increases allowed time for the day.
+        gettime <user> ... Prints remaining time for the day.
+        reset <user> ... Reset time for the day.
+        logout <user> ... Starts logout sequence for user.
+        hourly ... Enables/disables user access based on the schedule.
+        daily ... Resets time for the new day.
+        update ... Updates kidtimer to the latest version.
+        info ... Gather local configurations to troubleshoot issues.
+        help ... This list.
+        --------------------------------------------------------------------------------
+EOF
 }
 
 check_dependencies() {
-	local MISSING_TOOLS=""
-	which at			&>/dev/null || MISSING_TOOLS="${MISSING_TOOLS} at"
-	which notify-send	&>/dev/null || MISSING_TOOLS="${MISSING_TOOLS} libnotify-bin"
+    local MISSING_TOOLS=""
+    which at            &>/dev/null || MISSING_TOOLS="${MISSING_TOOLS} at"
+    which notify-send    &>/dev/null || MISSING_TOOLS="${MISSING_TOOLS} libnotify-bin"
 
-	if [[ -n "${MISSING_TOOLS}" ]]
-	then
-		cat <<- EOF
-			$(locale_message 20)
-			$(locale_message 21)
-			sudo apt-get install ${MISSING_TOOLS}
-		EOF
-		exit 1
-	fi
+    if [[ -n "${MISSING_TOOLS}" ]]
+    then
+        cat <<- EOF
+            $(locale_message 20)
+            $(locale_message 21)
+            sudo apt-get install ${MISSING_TOOLS}
+EOF
+        exit 1
+    fi
 }
 
 get_update() {
-	wget -q -O ${BASE_DIR}/bin/kidtimer ${REPOSITORY_URL}/bin/kidtimer
-	chmod a+x ${BASE_DIR}/bin/kidtimer
+    wget -q -O ${BASE_DIR}/bin/kidtimer ${REPOSITORY_URL}/bin/kidtimer
+    chmod a+x ${BASE_DIR}/bin/kidtimer
 }
 
 install() {
-	for FILE in ${FILES[@]}
-	do
-		mkdir -p $(dirname ${BASE_DIR}/${FILE})
-		wget -q -O ${BASE_DIR}/${FILE} ${REPOSITORY_URL}/${FILE}
-	done
-	mkdir -p /usr/local/bin
-	ln -sf ${BASE_DIR}/bin/kidtimer /usr/local/bin/kidtimer
-	chmod a+x ${BASE_DIR}/bin/kidtimer
-	echo '* * * * * root /usr/local/bin/kidtimer check' > /etc/cron.d/kidtimer
+    for FILE in ${FILES[@]}
+    do
+        mkdir -p $(dirname ${BASE_DIR}/${FILE})
+        wget -q -O ${BASE_DIR}/${FILE} ${REPOSITORY_URL}/${FILE}
+    done
+    mkdir -p /usr/local/bin
+    ln -sf ${BASE_DIR}/bin/kidtimer /usr/local/bin/kidtimer
+    chmod a+x ${BASE_DIR}/bin/kidtimer
+    echo '* * * * * root /usr/local/bin/kidtimer check' > /etc/cron.d/kidtimer
 }
 
 uninstall() {
-	for KID in ${KIDS[@]}
-	do
-		is_locked ${KID} && passwd ${KID} -u
-	done
-	for FILE in ${FILES[@]}
-	do
-		rm -f ${BASE_DIR}/${FILE}
-	done
+    for KID in ${KIDS[@]}
+    do
+        is_locked ${KID} && passwd ${KID} -u
+    done
+    for FILE in ${FILES[@]}
+    do
+        rm -f ${BASE_DIR}/${FILE}
+    done
 }
 
 
@@ -568,17 +589,17 @@ uninstall() {
 ################################################
 
 case "$1" in
-	"")			check_dependencies && go_tui	;;
-	addtime)	go_addtime $2 $3 $4				;;
-	reset)		reset_time $2					;;
-	gettime)	get_time $2						;;
-	logout)		go_logout $2					;;
-	update)		get_update						;;
-	check)		go_check						;;
-	info)		get_info						;;
-	install)	install							;;
-	-h)			go_help							;;
-	help)		go_help							;;
+    "")         check_dependencies && go_tui   ;;
+    addtime)    go_addtime $2 $3 $4            ;;
+    reset)      reset_time $2 $3               ;;
+    gettime)    get_time $2                    ;;
+    logout)     go_logout $2                   ;;
+    update)     get_update                     ;;
+    check)      go_check                       ;;
+    info)       get_info                       ;;
+    install)    install                        ;;
+    -h)         go_help                        ;;
+    help)       go_help                        ;;
 esac
 
 # vim: ts=4
