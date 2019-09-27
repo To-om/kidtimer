@@ -87,8 +87,8 @@ update_ttl() {
     local WEEK_TTL=$(get_current_ttl ${KID} week)
     set_ttl ${KID} week $((${WEEK_TTL} - 1))
 
-    if [[ ${DAY_TTL} -gt ${WEEK_DAY} ]]
-    then echo ${WEEK_DAY}
+    if [[ ${DAY_TTL} -gt ${WEEK_TTL} ]]
+    then echo ${WEEK_TTL}
     else echo ${DAY_TTL}
     fi
 }
