@@ -140,7 +140,9 @@ is_locked() {
 
 is_daily_reset() {
     local KID=$1
-    stat -c %y "${TIME_DIR}/${KID}-day.ttl" | grep -q "^$(date +%Y-%m-%d)"
+    local DATE=$(date +%Y-%m-%d)
+    local LAST_MODIFICATION_DATE=$(stat -c %y "${TIME_DIR}/${KID}-day.ttl" | awk '{ print $1 }')
+    [[ ${LAST_MODIFICATION_DATE} != ${DATE} ]]
 }
 
 is_weekly_reset() {
@@ -157,8 +159,8 @@ is_weekly_reset() {
 go_check() {
     for KID in ${KIDS[@]}
     do
-        local DAILY_RESET=$(is_daily_reset ${KID} && echo "N" || echo "Y")
-        local WEEKLY_RESET=$(is_weekly_reset ${KID} && echo "N" || echo "Y")
+        local DAILY_RESET=$(is_daily_reset ${KID} && echo "Y" || echo "N")
+        local WEEKLY_RESET=$(is_weekly_reset ${KID} && echo "Y" || echo "N")
         local IS_LOGGED=$(is_logged ${KID} && echo "Y" || echo "N")
         local IS_LOCKED=$(is_locked ${KID} && echo "Y" || echo "N")
         local LOGOUT="N"
@@ -186,7 +188,7 @@ go_check() {
             else [[ ${IS_LOCKED} == "N" ]] && passwd ${KID} -l
             fi
         fi
-        echo $(date +"%F %T") KID=${KID} DAILY_RESET=${DAILY_RESET} IS_LOGGED=${IS_LOGGED} CURRENT_TTL=${DAY_TTL}/${WEEK_TTL} IS_LOCKED=${IS_LOCKED} LOGOUT=${LOGOUT} HOURLY_ALLOWED=${HOURLY_ALLOWED} >> ${LOG_FILE}
+        echo $(date +"%F %T") KID=${KID} DAILY_RESET=${DAILY_RESET} WEEKLY_RESET=${WEEKLY_RESET} IS_LOGGED=${IS_LOGGED} CURRENT_TTL=${DAY_TTL}/${WEEK_TTL} IS_LOCKED=${IS_LOCKED} LOGOUT=${LOGOUT} HOURLY_ALLOWED=${HOURLY_ALLOWED} >> ${LOG_FILE}
     done
 }
 
