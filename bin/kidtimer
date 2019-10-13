@@ -347,14 +347,23 @@ reset_time() {
     local KID=$1
     local PERIOD=$2
 
-    # make sure this kid is in the list to begin with
-    if is_configured ${KID}
+    if [[ -z ${PERIOD} ]]
     then
-        local TTL=$(get_default_ttl ${KID} ${PERIOD})
-        set_ttl ${KID} ${PERIOD} ${TTL}
-        is_locked ${KID} && passwd ${KID} -u
-        go_clean_jobs ${KID}
-        go_echo_done
+        reset_time ${KID} day
+        reset_time ${KID} week
+    else
+        # make sure this kid is in the list to begin with
+        if is_configured ${KID}
+        then
+            local TTL=$(get_default_ttl ${KID} ${PERIOD})
+            set_ttl ${KID} ${PERIOD} ${TTL}
+            if [[ ${TTL} -gt 0 ]]
+            then
+                is_locked ${KID} && passwd ${KID} -u
+                go_clean_jobs ${KID}
+            fi
+            go_echo_done
+        fi
     fi
 }
 
